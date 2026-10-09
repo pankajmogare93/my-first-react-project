@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: good-slowly
+    runtime: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: DB_HOST
+        fromDatabase:
+          name: good-slowly-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: good-slowly-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: good-slowly-db
+          property: database
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: good-slowly-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: good-slowly-db
+          property: password
+
+databases:
+  - name: good-slowly-db
+    databaseName: good_slowly
+    user: good_slowly
+    plan: free
+    region: oregon
