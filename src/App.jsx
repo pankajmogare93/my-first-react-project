@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import Dashboard from './Dashboard'
 import './Login.css'
 
 function App() {
@@ -6,11 +7,60 @@ function App() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [currentUser, setCurrentUser] = useState(null)
   const [message, setMessage] = useState('')
 
-  function handleSubmit(event) {
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetch('/api/auth/me', { signal: controller.signal })
+      .then(async (response) => {
+        if (response.ok) setCurrentUser(await response.json())
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setMessage('Backend unavailable. Start the Spring Boot server on port 8080.')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsCheckingSession(false)
+      })
+
+    return () => controller.abort()
+  }, [])
+
+  async function handleSubmit(event) {
     event.preventDefault()
-    setMessage('Your sign-in form is ready to connect to an authentication provider.')
+    setIsSubmitting(true)
+    setMessage('')
+
+    try {
+      const response = await fetch(`/api/auth/${isCreatingAccount ? 'register' : 'login'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, rememberMe }),
+      })
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        setMessage(result.message || 'Something went wrong. Please try again.')
+        return
+      }
+
+      setCurrentUser(result)
+      setPassword('')
+    } catch {
+      setMessage('Could not reach the backend. Check that Spring Boot is running on port 8080.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (!isCheckingSession && currentUser) {
+    return <Dashboard user={currentUser} />
   }
 
   return (
@@ -25,95 +75,114 @@ function App() {
           <p className="photo-quote">Make room<br />for what matters.</p>
           <span className="photo-caption">Your days, at your own pace.</span>
         </div>
-        <span className="photo-credit">A QUIETER KIND OF PRODUCTIVITY</span>
+        <span className="photo-credit">A PERSONAL PROJECT BY PANKAJ MOGARE</span>
       </section>
 
       <section className="form-panel" id="sign-in" aria-labelledby="login-title">
         <div className="form-wrap">
-          <p className="form-eyebrow">WELCOME BACK</p>
-          <h1 id="login-title">Come on in.</h1>
-          <p className="form-intro">Sign in to find your way back to today.</p>
+          {isCheckingSession ? (
+            <p className="form-intro">Finding your place...</p>
+          ) : (
+            <>
+              <p className="form-eyebrow">{isCreatingAccount ? 'A FRESH START' : 'WELCOME BACK'}</p>
+              <h1 id="login-title">{isCreatingAccount ? 'Make yourself at home.' : 'Come on in.'}</h1>
+              <p className="form-intro">
+                {isCreatingAccount
+                  ? 'Create an account to save your place.'
+                  : 'Sign in to find your way back to today.'}
+              </p>
 
-          <form className="login-form" onSubmit={handleSubmit}>
-            <div className="field-group">
-              <label htmlFor="email">Email address</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="username"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value)
-                  setMessage('')
-                }}
-                required
-              />
-            </div>
+              <form className="login-form" onSubmit={handleSubmit}>
+                <div className="field-group">
+                  <label htmlFor="email">Email address</label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value)
+                      setMessage('')
+                    }}
+                    required
+                  />
+                </div>
 
-            <div className="field-group">
-              <div className="password-label-row">
-                <label htmlFor="password">Password</label>
-                <button
-                  className="text-button"
-                  type="button"
-                  aria-pressed={showPassword}
-                  onClick={() => setShowPassword((visible) => !visible)}
-                >
-                  {showPassword ? 'Hide' : 'Show'}
+                <div className="field-group">
+                  <div className="password-label-row">
+                    <label htmlFor="password">Password</label>
+                    <button
+                      className="text-button"
+                      type="button"
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((visible) => !visible)}
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete={isCreatingAccount ? 'new-password' : 'current-password'}
+                    placeholder={isCreatingAccount ? 'At least 8 characters' : 'Enter your password'}
+                    minLength={isCreatingAccount ? 8 : undefined}
+                    maxLength={72}
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value)
+                      setMessage('')
+                    }}
+                    required
+                  />
+                </div>
+
+                {!isCreatingAccount && (
+                  <div className="form-options">
+                    <label className="remember-option">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(event) => setRememberMe(event.target.checked)}
+                      />
+                      <span>Remember me</span>
+                    </label>
+                    <button
+                      className="text-button"
+                      type="button"
+                      onClick={() => setMessage('Password recovery is not configured yet.')}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                <button className="sign-in-button" type="submit" disabled={isSubmitting}>
+                  <span>{isSubmitting ? 'Please wait...' : isCreatingAccount ? 'Create account' : 'Sign in'}</span>
+                  <span aria-hidden="true">&#8594;</span>
                 </button>
-              </div>
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value)
-                  setMessage('')
-                }}
-                required
-              />
-            </div>
+                <p className={message ? 'form-message is-visible' : 'form-message'} role="status" aria-live="polite">
+                  {message}
+                </p>
+              </form>
 
-            <div className="form-options">
-              <label className="remember-option">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(event) => setRememberMe(event.target.checked)}
-                />
-                <span>Remember me</span>
-              </label>
-              <button
-                className="text-button"
-                type="button"
-                onClick={() => setMessage('Password recovery is not connected yet.')}
-              >
-                Forgot password?
-              </button>
-            </div>
-
-            <button className="sign-in-button" type="submit">
-              <span>Sign in</span>
-              <span aria-hidden="true">&#8594;</span>
-            </button>
-            <p className="form-message" role="status" aria-live="polite">{message}</p>
-          </form>
-
-          <p className="signup-prompt">
-            New around here?{' '}
-            <button
-              className="text-button signup-button"
-              type="button"
-              onClick={() => setMessage('Account creation is not connected yet.')}
-            >
-              Create an account
-            </button>
-          </p>
+              <p className="signup-prompt">
+                {isCreatingAccount ? 'Already have an account?' : 'New around here?'}{' '}
+                <button
+                  className="text-button signup-button"
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingAccount((creating) => !creating)
+                    setMessage('')
+                  }}
+                >
+                  {isCreatingAccount ? 'Sign in' : 'Create an account'}
+                </button>
+              </p>
+            </>
+          )}
           <p className="form-footnote">Take your time. You are right where you need to be.</p>
         </div>
       </section>
